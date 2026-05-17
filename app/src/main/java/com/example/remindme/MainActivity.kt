@@ -1,10 +1,14 @@
 package com.example.remindme
 
+import android.Manifest
 import android.app.TimePickerDialog
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,12 +48,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.example.remindme.data.ReminderDatabase
 import com.example.remindme.data.ReminderEntity
+import com.example.remindme.notifications.ReminderScheduler
 import com.example.remindme.ui.theme.RemindMeTheme
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -61,9 +67,14 @@ import java.util.Date
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        requestNotificationPermissionIfNeeded()
         setContent {
             RemindMeTheme {
                 Surface(
@@ -75,9 +86,20 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 }
 
-class ReminderViewModel(private val database: ReminderDatabase) : ViewModel() {
+class ReminderViewModel(
+    private val database: ReminderDatabase,
+    private val reminderScheduler: ReminderScheduler
+) : ViewModel() {
     val reminders: StateFlow<List<ReminderEntity>> =
         database.reminderDao().getAllReminders().stateIn(
             scope = viewModelScope,
@@ -87,8 +109,17 @@ class ReminderViewModel(private val database: ReminderDatabase) : ViewModel() {
 
     fun addReminder(title: String, dueDateTimeMillis: Long) {
         viewModelScope.launch {
-            database.reminderDao().insertReminder(
+            val reminderId = database.reminderDao().insertReminder(
                 ReminderEntity(
+                    title = title,
+                    dueDateTimeMillis = dueDateTimeMillis,
+                    isCompleted = false
+                )
+            ).toInt()
+
+            reminderScheduler.schedule(
+                ReminderEntity(
+                    id = reminderId,
                     title = title,
                     dueDateTimeMillis = dueDateTimeMillis,
                     isCompleted = false
@@ -99,16 +130,20 @@ class ReminderViewModel(private val database: ReminderDatabase) : ViewModel() {
 
     fun deleteReminder(reminder: ReminderEntity) {
         viewModelScope.launch {
+            reminderScheduler.cancel(reminder)
             database.reminderDao().deleteReminder(reminder)
         }
     }
 }
 
-class ReminderViewModelFactory(private val database: ReminderDatabase) : ViewModelProvider.Factory {
+class ReminderViewModelFactory(
+    private val database: ReminderDatabase,
+    private val reminderScheduler: ReminderScheduler
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ReminderViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return ReminderViewModel(database) as T
+            return ReminderViewModel(database, reminderScheduler) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
@@ -119,7 +154,8 @@ class ReminderViewModelFactory(private val database: ReminderDatabase) : ViewMod
 fun ReminderScreen() {
     val context = LocalContext.current
     val database = remember { ReminderDatabase.getDatabase(context) }
-    val viewModel: ReminderViewModel = viewModel(factory = ReminderViewModelFactory(database))
+    val reminderScheduler = remember { ReminderScheduler(context) }
+    val viewModel: ReminderViewModel = viewModel(factory = ReminderViewModelFactory(database, reminderScheduler))
 
     val reminderText = remember { mutableStateOf("") }
     val selectedDateTimeText = remember { mutableStateOf("") }
