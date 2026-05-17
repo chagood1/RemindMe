@@ -17,20 +17,35 @@ class ReminderScheduler(private val context: Context) {
 
         val pendingIntent = createPendingIntent(reminder)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        reminder.dueDateTimeMillis,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.set(
+                        AlarmManager.RTC_WAKEUP,
+                        reminder.dueDateTimeMillis,
+                        pendingIntent
+                    )
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    reminder.dueDateTimeMillis,
+                    pendingIntent
+                )
+            }
+        } catch (e: SecurityException) {
             alarmManager.set(
                 AlarmManager.RTC_WAKEUP,
                 reminder.dueDateTimeMillis,
                 pendingIntent
             )
-            return
         }
-
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            reminder.dueDateTimeMillis,
-            pendingIntent
-        )
     }
 
     fun cancel(reminder: ReminderEntity) {

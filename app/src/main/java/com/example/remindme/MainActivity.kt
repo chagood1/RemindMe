@@ -65,6 +65,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 class MainActivity : ComponentActivity() {
     private val requestNotificationPermissionLauncher = registerForActivityResult(
@@ -89,7 +90,10 @@ class MainActivity : ComponentActivity() {
 
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
             requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -155,7 +159,9 @@ fun ReminderScreen() {
     val context = LocalContext.current
     val database = remember { ReminderDatabase.getDatabase(context) }
     val reminderScheduler = remember { ReminderScheduler(context) }
-    val viewModel: ReminderViewModel = viewModel(factory = ReminderViewModelFactory(database, reminderScheduler))
+    val viewModel: ReminderViewModel = viewModel(
+        factory = ReminderViewModelFactory(database, reminderScheduler)
+    )
 
     val reminderText = remember { mutableStateOf("") }
     val selectedDateTimeText = remember { mutableStateOf("") }
@@ -173,8 +179,18 @@ fun ReminderScreen() {
                     onClick = {
                         val millis = datePickerState.selectedDateMillis
                         if (millis != null) {
+                            val utcCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+                            utcCalendar.timeInMillis = millis
+
                             val calendar = Calendar.getInstance()
-                            calendar.time = Date(millis)
+                            calendar.clear()
+                            calendar.set(
+                                utcCalendar.get(Calendar.YEAR),
+                                utcCalendar.get(Calendar.MONTH),
+                                utcCalendar.get(Calendar.DAY_OF_MONTH)
+                            )
+
+                            val currentTime = Calendar.getInstance()
 
                             TimePickerDialog(
                                 context,
@@ -187,8 +203,8 @@ fun ReminderScreen() {
                                     selectedDateTimeMillis.longValue = calendar.timeInMillis
                                     selectedDateTimeText.value = formatDateTime(calendar.timeInMillis)
                                 },
-                                calendar.get(Calendar.HOUR_OF_DAY),
-                                calendar.get(Calendar.MINUTE),
+                                currentTime.get(Calendar.HOUR_OF_DAY),
+                                currentTime.get(Calendar.MINUTE),
                                 false
                             ).show()
                         }
@@ -214,7 +230,13 @@ fun ReminderScreen() {
             .background(MaterialTheme.colorScheme.background)
             .padding(20.dp)
     ) {
-        Text(text = "RemindMe", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text(
+            text = "RemindMe",
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
         Text(
             text = "Simple personal reminders",
             fontSize = 14.sp,
@@ -239,7 +261,11 @@ fun ReminderScreen() {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Box(modifier = Modifier.fillMaxWidth().clickable { showDatePicker.value = true }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDatePicker.value = true }
+                ) {
                     OutlinedTextField(
                         value = selectedDateTimeText.value,
                         onValueChange = {},
@@ -256,7 +282,9 @@ fun ReminderScreen() {
 
                 Button(
                     onClick = {
-                        if (reminderText.value.isNotBlank() && selectedDateTimeMillis.longValue > 0L) {
+                        if (reminderText.value.isNotBlank() &&
+                            selectedDateTimeMillis.longValue > 0L
+                        ) {
                             viewModel.addReminder(
                                 title = reminderText.value.trim(),
                                 dueDateTimeMillis = selectedDateTimeMillis.longValue
@@ -266,24 +294,39 @@ fun ReminderScreen() {
                             selectedDateTimeMillis.longValue = 0L
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
                 ) {
-                    Text(text = "Add Reminder", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = "Add Reminder",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Text(text = "Your Reminders", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
+        Text(
+            text = "Your Reminders",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
 
         if (reminders.isEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
             ) {
                 Text(
                     text = "No reminders yet.",
@@ -292,9 +335,14 @@ fun ReminderScreen() {
                 )
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 items(reminders, key = { it.id }) { reminder ->
-                    ReminderRow(reminder = reminder, onDelete = { viewModel.deleteReminder(reminder) })
+                    ReminderRow(
+                        reminder = reminder,
+                        onDelete = { viewModel.deleteReminder(reminder) }
+                    )
                 }
             }
         }
@@ -302,20 +350,32 @@ fun ReminderScreen() {
 }
 
 @Composable
-fun ReminderRow(reminder: ReminderEntity, onDelete: () -> Unit) {
+fun ReminderRow(
+    reminder: ReminderEntity,
+    onDelete: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = reminder.title, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = reminder.title,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 Text(
                     text = formatDateTime(reminder.dueDateTimeMillis),
                     fontSize = 13.sp,
